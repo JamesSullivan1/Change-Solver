@@ -57,9 +57,8 @@ int sort_and_reduce(int *array, int length)
 int find_sums(int *coins, int n, int *out, int size)
 {
     if(n > 30 || n < 0) return 0;
-    if(size < (1 << n) - 1) return 0; // Boundary checks
+    if(size != (1 << n) - 1) return 0; // Boundary checks
 
-    int *sums = out;
     int i = 0;
     for(i = 1; i < size; i++) {
         int sum = 0;
@@ -68,7 +67,7 @@ int find_sums(int *coins, int n, int *out, int size)
             int pos = 1 << j; // Bit mask trick to lexicographically iterate
             if((i & pos) == pos) sum += coins[j];
         }
-        sums[i] = sum;
+        out[i] = sum;
     }
     
     return 1;
@@ -78,30 +77,26 @@ int find_sums(int *coins, int n, int *out, int size)
  * Returns : 1 if every change value from 1 - 99 can be made
  *           0 if not
  */
-int valid(int *coins, int n)
+int valid(int *coins, int n, int *sums, int size)
 {
-    if(n < 0 || n > 30) return 0;
-    int size = (1 << n) - 1;
-    int *sums = malloc(sizeof(int)*size);
-    int *sums_old = sums;
-    int rc = find_sums(coins, n, sums, size);
-    if(rc == 0) {
-        if(sums) free(sums);
-        return 0;
-    }
-    size = sort_and_reduce(sums, size);
+    if(n < 0 || n > 30) goto fail;
+    if(size != (1<<n) - 1) goto fail;
 
-    if(size < 98) return 0;
+    int rc = find_sums(coins, n, sums, size);
+    if(rc == 0) goto fail;
+    
+    int size_new = sort_and_reduce(sums, size);
+
+    if(size_new < 100) goto fail;
 
     int i;
-    for(i = 1; i < 100; i++) {
-        if(sums[i] != i) {
-            if(sums_old) free(sums_old);
-            return 0;
-        }
+    for(i = 1; i < 101; i++) {
+        if(sums[i] != i) goto fail;
     }
-    if(sums_old) free(sums_old);
+    
     return 1;
+fail:
+    return 0;
 }
 
 /*
@@ -118,7 +113,7 @@ int find_successor(int *coins, int n)
 {
     int i;
     int in_order = 1;
-    for(i = 0; i < n; i++) {
+    for(i = 0; i < n-1; i++) {
         if(coins[i+1] < coins[i]) {
             in_order = 0;
         }
@@ -149,30 +144,30 @@ int find_successor(int *coins, int n)
                     i -= 1; 
                     break;
                 }
+                int next_coin;
+                int j;
                 switch(coins[i-1]){
-                    int j;
                     case PENNY:
-                        for(j = i-1; j < n; j++) {
-                            coins[j] = NICKEL;
-                        }
+                        next_coin = NICKEL;
                         done = 1;
                         break;
                     case NICKEL:
-                        for(j = i-1; j < n; j++) {
-                            coins[j] = DIME;
-                        }
+                        next_coin = DIME;
                         done = 1;
                         break;
                     case DIME:
-                        for(j = i-1; j < n; j++) {
-                            coins[j] = QUARTER;
-                        }
+                        next_coin = QUARTER;
                         done = 1;
                         break;
                     case QUARTER:
                         i -= 1;
                         break;
                     default: return 0; // Shouldn't happen
+                }
+                if(done == 1) {
+                    for(j = i-1; j < n; j++) {
+                        coins[j] = next_coin;
+                    }
                 }
                 break;
             default:
@@ -196,11 +191,25 @@ int find_combination(int *buf, int n)
         buf[i] = coin_types[0];
     }
 
+    int size = (1 << n) - 1; // Max number of subsets of the coins
+    int *sums = (int *)(calloc(size, sizeof(int)));
+    int *pos = sums;
+
     // Iterate through all coin combinations
     int has_successor = 1;
-    while(!valid(buf, n) && has_successor == 1) {
+    while(!valid(buf, n, sums, size) && has_successor == 1) {
         int rc = find_successor(buf, n);
         if(rc == 0) has_successor = 0;
+        // Cleanup
+        for(i = 0; i < size; i++) {
+            sums[i] = 0;
+        }
+    }
+
+    // Deallocated
+    if(sums) {
+        sums = pos;
+        free(sums);
     }
 
     if(has_successor == 0) { 
@@ -221,7 +230,7 @@ int main(int argc, char *argv[])
     int *coins;
     while(found == 0 && n < MAX_COINS) {
         printf("n = %d : ", n);
-        coins = malloc(n*sizeof(int));
+        coins = (int *)(malloc(n*sizeof(int)));
         int rc = find_combination(coins, n);
         if(rc == 1) found = 1;
         else {
@@ -238,9 +247,16 @@ int main(int argc, char *argv[])
             printf("%d\t", coins[i]);
         }
         printf("\n");
-        if(coins) free(coins);
-        return 0;
-    } 
-    
+        goto done;
+    }
+
+    goto fail; 
+
+done:
+    if(coins) free(coins);
+    return 0;
+fail:
+    printf("Unable to find a solution...\n"); 
+    if(coins) free(coins);
     return 1;
 }
